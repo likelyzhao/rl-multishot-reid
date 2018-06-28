@@ -26,12 +26,13 @@ def build_network(symbol, num_id, batchsize):
     dropout = l2#mx.symbol.Dropout(data=l2, name='dropout1')       
     
     if args.lsoftmax:
-        #fc1 = mx.symbol.Custom(data=flatten, num_hidden=num_id, beta=1000, margin=3, scale=0.9999, beta_min=1, op_type='LSoftmax', name='lsoftmax')
-        fc1 = mx.symbol.LSoftmax(data=flatten, num_hidden=num_id, beta=1000, margin=4, scale=0.99999, beta_min=3, name='lsoftmax')
+        fc1 = mx.symbol.Custom(data=flatten, num_hidden=num_id, beta=1000, margin=3, scale=0.9999, beta_min=1, op_type='LSoftmax', name='lsoftmax')
+        #fc1 = mx.symbol.LSoftmax(data=flatten, num_hidden=num_id, beta=1000, margin=4, scale=0.99999, beta_min=3, name='lsoftmax')
     else:
         fc1 = mx.symbol.FullyConnected(data=flatten, num_hidden=num_id, name='cls_fc1')
 
     softmax1 = mx.symbol.SoftmaxOutput(data=fc1, name='softmax')
+    #softmax1 = mx.symbol.Softmax(data=fc1, name='softmax')
    
     outputs = [softmax1]
     if args.verifi: 
@@ -52,21 +53,30 @@ def build_network(symbol, num_id, batchsize):
         
     return mx.symbol.Group(outputs)
 
-
 class Multi_Metric(mx.metric.EvalMetric):
     """Calculate accuracies of multi label"""
-    def __init__(self, num=None, cls=1):
-        super(Multi_Metric, self).__init__('multi-metric', num)
+    def __init__(self, num=None, cls=1, logger= None):
+        self.num = num
+        self.logger = logger
+        super(Multi_Metric, self).__init__('multi-metric', num=num)
         self.cls = cls
+
+    def reset(self):
+        """Resets the internal evaluation result to initial state."""
+        self.num_inst = 0 if self.num is None else [0] * self.num
+        self.sum_metric = 0.0 if self.num is None else [0.0] * self.num
 
     def update(self, labels, preds):
         # mx.metric.check_label_shapes(labels, preds)
         # classification loss
+        #self.logger.info(len(preds))
         for i in range(self.cls):
             pred_label = mx.nd.argmax_channel(preds[i])
             pred_label = pred_label.asnumpy().astype('int32')
             label = labels[i].asnumpy().astype('int32')
-        
+            #self.logger.info(pred_label)
+            #self.logger.info("label")
+            #self.logger.info(label)
             mx.metric.check_label_shapes(label, pred_label)
 
             if self.num is None:
@@ -79,12 +89,46 @@ class Multi_Metric(mx.metric.EvalMetric):
         # verification losses
         for i in range(self.cls, len(preds)):
             pred = preds[i].asnumpy()
+            # self.logger.info(pred)
             if self.num is None:
                 self.sum_metric += np.sum(pred)
                 self.num_inst += len(pred)
             else:
                 self.sum_metric[i] += np.sum(pred)
                 self.num_inst[i] += len(pred)
+
+    def get(self):
+        """Gets the current evaluation result.
+
+        Returns
+        -------
+        names : list of str
+           Name of the metrics.
+        values : list of float
+           Value of the evaluations.
+        """
+        #self.logger.info(self.num)
+        if self.num is None:
+            return super(Multi_Metric, self).get()
+        else:
+            acc = self.sum_metric[0] / self.num_inst[0] if self.num_inst[0] != 0 else float('nan')
+            loss = [acc] + [self.sum_metric[i] for i in range(self.cls, self.num)]
+            return zip(*(('%s-task%d'%(self.name, i), loss[i]) for i in range(self.num)))
+
+    def get_name_value(self):
+        """Returns zipped name and value pairs.
+
+        Returns
+        -------
+        list of tuples
+            A (name, value) tuple list.
+        """
+        if self.num is None:
+            return super(Multi_Metric, self).get_name_value()
+        name, value = self.get()
+        return list(zip(name, value))
+
+
 
 def get_imRecordIter(name, input_shape, batch_size, kv, shuffle=False, aug=False, even_iter=False):
     '''
@@ -161,7 +205,7 @@ def parse_args():
                         help='the number of training examples')
     parser.add_argument('--num-id', type=int, default=150,
                         help='the number of training ids')
-    parser.add_argument('--batch-size', type=int, default=4,
+    parser.add_argument('--batch-size', type=int, default=64,
                         help='the batch size')
     parser.add_argument('--lr', type=float, default=1e-2,
                         help='the initial learning rate')
@@ -177,7 +221,7 @@ def parse_args():
                         help='if use verifi loss')
     parser.add_argument('--triplet', action='store_true', default=False,
                         help='if use triplet loss')
-    parser.add_argument('--lmnn', action='store_true', default=True,
+    parser.add_argument('--lmnn', action='store_true', default=False,
                         help='if use LMNN loss')    
     parser.add_argument('--center', action='store_true', default=False,
                         help='if use center loss')
@@ -218,7 +262,7 @@ def load_checkpoint(prefix, epoch):
 
 args = parse_args()
 
-print args
+print(args)
 batch_size = args.batch_size
 num_epoch = args.num_epoches
 devices = [mx.gpu(int(i)) for i in args.gpus.split(',')]
@@ -239,7 +283,7 @@ kv = mx.kvstore.create(args.kv_store)
 train, val = get_iterators(
     batch_size=batch_size, input_shape=(3, 224, 112),
     train=args.train_file, test=args.test_file, kv=kv, gpus=len(devices))
-print train.batch_size
+print(train.batch_size)
 #train = get_imRecordIter(args.train_file, (3, 224, 112), batch_size, kv)
 #val = get_imRecordIter(args.test_file, (3, 224, 112), batch_size, kv)
 
@@ -260,11 +304,12 @@ logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 logging.info(args)
 
+
+
 print ('begining of mx.model.feedforward')
 
-model = mx.model.FeedForward(
-    symbol=net, ctx=devices, num_epoch=num_epoch, arg_params=arg_params,
-    aux_params=aux_params, initializer=init, optimizer=sgd)
+model = mx.mod.Module(
+    symbol=net, context=devices, logger=logger)
 
 prefix = 'models/%s' % args.mode
 num = 1
@@ -273,14 +318,16 @@ if args.verifi:
 if args.triplet:
     num += 1
 if args.lmnn:
-        num += 1
+    num += 1
 if args.center:
     num += 1
     
 
-eval_metric=Multi_Metric(num=num, cls=1)
+eval_metric=Multi_Metric(num=num, cls=1,logger= logger)
 epoch_end_callback=mx.callback.do_checkpoint(prefix)
 batch_end_callback=mx.callback.Speedometer(batch_size=batch_size)
 print ('begining of model.fit')
-model.fit(X=train, eval_data=val, eval_metric=eval_metric, logger=logger, epoch_end_callback=epoch_end_callback, batch_end_callback=batch_end_callback)
+print(train)
+#model.fit(X=train, eval_data=val, eval_metric=eval_metric, logger=logger, epoch_end_callback=epoch_end_callback, batch_end_callback=batch_end_callback)
+model.fit(train, eval_data=val, eval_metric=eval_metric, epoch_end_callback=epoch_end_callback, batch_end_callback=batch_end_callback, optimizer=sgd, arg_params=arg_params,aux_params=aux_params, num_epoch=num_epoch, initializer=init, allow_missing=True)
 print('done')

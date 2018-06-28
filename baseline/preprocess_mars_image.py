@@ -5,9 +5,9 @@ import random
 import glob
 import numpy as np
 
-ROOT = '/data3/matt/MARS'
-output = '/data3/matt/MARS/recs'
-im2rec = '/home/tina/reid/mxnet/bin/im2rec'
+ROOT = '../mars'
+output = '.'
+im2rec = '../../incubator-mxnet/tools/im2rec.py'
 
 
 def load_split():
@@ -37,8 +37,8 @@ def save_rec(lst, path, name):
     fo = csv.writer(open(lst_file, "w"), delimiter='\t', lineterminator='\n')
     for item in lst:
         fo.writerow(item)
-    print 'echo 123456 | sudo -S %s %s %s %s resize=128 quality=90 &' % (im2rec, lst_file, ROOT, rec_file)
-    #subprocess.call('%s %s %s %s resize=128 quality=90' % (im2rec, lst_file, ROOT, rec_file))
+    print 'echo 123456 | python2 %s %s %s --resize 128 --quality 90 &' % (im2rec, lst_file, ROOT)
+    # subprocess.call('python2 %s %s %s --resize 128 --quality 90' % (im2rec, lst_file, ROOT))
 
 def save_train(f, is_valid=False):
     plst, nlst, cnt, N, pool = [], [], 0, len(f), [_ for _ in xrange(len(f))]
@@ -73,13 +73,15 @@ def gen_train():
             ct = name[4:6]
             if not ct in f:
                 f[ct] = []
-            f[ct].append(k[len(ROOT):])
+            # f[ct].append(k[len(ROOT):])
+            f[ct].append(k[len(ROOT):].replace('/bbox','bbox'))
         g = []
         for x in f:
             if len(f[x]) > 1:
                 g.append(f[x])
         if len(g) <= 1:
             continue
+    #    print(g[0])
         pool.append(g)
 
     save_train(pool)
@@ -90,7 +92,7 @@ def naive_lst(dataset):
     lst, cnt = [], 0
     for line in lst_file:
         s = line.strip()
-        lst.append((cnt, 0, '/bbox_%s/%s/%s' % (dataset, s[:4], s)))
+        lst.append((cnt, 0, 'bbox_%s/%s/%s' % (dataset, s[:4], s)))
         cnt += 1
     save_rec(lst, output, 'eval_' + dataset)
 

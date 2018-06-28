@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-
-bs=8
+cd /workspace/mnt/group/video/zhaozhijian/rl-multishot-reid/baseline
+bs=64
 epochs=1
 sets=0
 gpus=$1
 data_dir=$4
+mode='SAVE'
 case $2 in
   iLiDS-VID)
     base=ilds_$3_$sets
@@ -21,8 +22,8 @@ case $2 in
   MARS)
     base=mars_$3
     num_id=624
-    train_set=image_valid
-    valid_set=image_test
+    train_set=image_train
+    test_set=image_valid
     ;;
   *)
     echo "No valid dataset"
@@ -32,17 +33,17 @@ esac
 
 case $3 in
   alexnet)
-    python baseline.py --gpus $gpus --data-dir $data_dir \
+    python2 baseline.py --gpus $gpus --data-dir $data_dir \
         --num-id $num_id --batch-size $bs \
-        --train-set $train_set --valid-set $valid_set \
+        --train-file $train_set --test-file $test_set \
         --lr 1e-4 --num-epoches $epochs --mode $mode \
         --network alexnet --model-load-prefix alexnet --model-load-epoch 1
     ;;
   inception-bn)
-     python baseline.py --gpus $gpus --data-dir $data_dir \
+     python2 baseline.py --gpus $gpus --data-dir $data_dir \
         --num-id $num_id --batch-size $bs \
-        --train-set $train_set --valid-set $valid_set \
-        --lr 1e-2 --num-epoches $epochs --mode $mode --lsoftmax
+        --train-file $train_set --test-file $test_set \
+        --lr 1e-2 --num-epoches $epochs --mode $mode  --lmnn #--lsoftmax
     ;;
   *)
     echo "No valid basenet"

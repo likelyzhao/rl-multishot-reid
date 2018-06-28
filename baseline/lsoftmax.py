@@ -47,6 +47,7 @@ class LSoftmaxOp(mx.operator.CustomOp):
         return cos_mt
 
     def forward(self, is_train, req, in_data, out_data, aux):
+        print(in_data)
         assert len(in_data) == 3
         assert len(out_data) == 1
         assert len(req) == 1
